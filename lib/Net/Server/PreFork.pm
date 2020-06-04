@@ -105,7 +105,7 @@ sub loop {
     };
 
     my $start = $prop->{'min_servers'};
-    $self->log(3, "Beginning prefork ($start processes)");
+    $self->log(3, "($$) Beginning prefork ($start processes)");
     $self->run_n_children($start);
 
     $self->run_parent;
@@ -121,7 +121,7 @@ sub kill_n_children {
     return unless $time - $prop->{'last_kill'} > 10;
     $prop->{'last_kill'} = $time;
 
-    $self->log(3, "Killing \"$n\" children");
+    $self->log(3, "($$) Killing \"$n\" children");
 
     foreach my $pid (keys %{ $prop->{'children'} }){
         # Only kill waiting children
@@ -148,7 +148,7 @@ sub run_n_children {
     $self->run_n_children_hook($n);
 
     my ($parentsock, $childsock);
-    $self->log(3, "Starting \"$n\" children");
+    $self->log(3, "($$) Starting \"$n\" children");
     $prop->{'last_start'} = time();
 
     for (1 .. $n) {
@@ -213,7 +213,7 @@ sub run_child {
             or $self->fatal("Couldn't open lock file \"$prop->{'lock_file'}\"[$!]");
     }
 
-    $self->log(4, "Child Preforked ($$)");
+    $self->log(4, "($$) Child Preforked");
 
     delete @{ $prop }{qw(children tally last_start last_process)};
 
@@ -248,7 +248,7 @@ sub run_parent {
     my $prop = $self->{'server'};
     my $id;
 
-    $self->log(4, "Parent ready for children.");
+    $self->log(4, "($$) Parent ready for children.");
     my $read_fh = $prop->{'_READ'};
 
     @{ $prop }{qw(last_checked_for_dead last_checked_for_waiting last_checked_for_dequeue last_process last_kill)} = (time) x 5;
@@ -321,14 +321,16 @@ sub run_parent {
             next if $line !~ /^(\d+)\ +(waiting|processing|dequeue|exiting)$/;
             my ($pid, $status) = ($1, $2);
 
+            $self->log(4,"($$) Child $pid reporting $status");
+
             if (my $child = $prop->{'children'}->{$pid}) {
                 if ($status eq 'exiting') {
                     $self->delete_child($pid);
 
                 } else {
                     # Decrement tally of state pid was in (plus sanity check)
-                    my $old_status = $child->{'status'}    || $self->log(2, "No status for $pid when changing to $status");
-                    --$prop->{'tally'}->{$old_status} >= 0 || $self->log(2, "Tally for $status < 0 changing pid $pid from $old_status to $status");
+                    my $old_status = $child->{'status'}    || $self->log(2, "($$) No status for $pid when changing to $status");
+                    --$prop->{'tally'}->{$old_status} >= 0 || $self->log(2, "($$) Tally for $status < 0 changing pid $pid from $old_status to $status");
 
                     $child->{'status'} = $status;
                     ++$prop->{'tally'}->{$status};
@@ -386,7 +388,7 @@ sub coordinate_children {
         }
         $w -= $tally->{'waiting'};
         $p -= $tally->{'processing'};
-        $self->log(3, "Processing diff ($p), Waiting diff ($w)") if $p || $w;
+        $self->log(3, "($$) Processing diff ($p), Waiting diff ($w)") if $p || $w;
     }
 
     my $total = $tally->{'waiting'} + $tally->{'processing'};
@@ -436,6 +438,7 @@ sub coordinate_children {
     if ($time - $prop->{'last_process'} > 30 && $tally->{'waiting'} > $prop->{'min_spare_servers'}) {
         my $n1 = $tally->{'waiting'} - $prop->{'min_spare_servers'};
         my $n2 = $total - $prop->{'min_servers'};
+		$self->log(4,"($$) Check min spare servers n1: $n1 n2: $n2");
         $self->kill_n_children( ($n2 > $n1) ? $n1 : $n2 );
     }
 
@@ -458,7 +461,7 @@ sub delete_child {
 
     my $child = $prop->{'children'}->{$pid};
     if (! $child) {
-        $self->log(2, "Attempt to delete already deleted child $pid");
+        $self->log(2, "($$) Attempt to delete already deleted child $pid");
         return;
     }
 
@@ -469,15 +472,15 @@ sub delete_child {
     if ($exit) {
         my $status  = $exit >> 8;
         my $signal  = $exit & 127;
-        my $message = "Child process $pid exited with status $status";
+        my $message = "($$) Child process $pid exited with status $status";
         $message .= " - signal was $signal"
             if $signal;
 
         $self->log(1, $message);
     }
 
-    my $status = $child->{'status'}    || $self->log(2, "No status for $pid when deleting child");
-    --$prop->{'tally'}->{$status} >= 0 || $self->log(2, "Tally for $status < 0 deleting pid $pid");
+    my $status = $child->{'status'}    || $self->log(2, "($$) No status for $pid when deleting child");
+    --$prop->{'tally'}->{$status} >= 0 || $self->log(2, "($$) Tally for $status < 0 deleting pid $pid");
     $prop->{'tally'}->{'time'} = 0 if $child->{'hup'};
 
     $self->SUPER::delete_child($pid);
