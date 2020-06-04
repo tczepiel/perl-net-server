@@ -78,7 +78,9 @@ sub loop {
     my $self = shift;
     my $prop = $self->{'server'};
 
-    pipe(my $read, my $write); # get ready for child->parent communication
+    # get ready for child->parent communication
+    pipe(my $read, my $write)
+        or $self->fatal("Error: failed to create pipe: $!");
     $read->autoflush(1);
     $write->autoflush(1);
     $prop->{'_READ'}  = $read;
