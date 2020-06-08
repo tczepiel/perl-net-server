@@ -270,6 +270,11 @@ sub run_parent {
         QUIT => sub { $self->{'server'}->{'kind_quit'} = 1; $self->server_close() },
         TTIN => sub { $self->{'server'}->{$_}++ for qw(min_servers max_servers); $self->log(3, "Increasing server count ($self->{'server'}->{'max_servers'})") },
         TTOU => sub { $self->{'server'}->{$_}-- for qw(min_servers max_servers); $self->log(3, "Decreasing server count ($self->{'server'}->{'max_servers'})") },
+        USR1 => sub {
+            require Data::Dumper;
+            $self->log(1, "($$) Received SIGUSR1, dumping tally");
+            $self->log(1,Data::Dumper::Dumper($prop->{'tally'}));
+        },
     );
 
     $self->register_sig_pass;
@@ -426,11 +431,20 @@ sub coordinate_children {
     # periodically make sure children are alive
     if ($time - $prop->{'last_checked_for_dead'} > $prop->{'check_for_dead'}) {
         $prop->{'last_checked_for_dead'} = $time;
+        my $colliding_pid;
         foreach my $pid (keys %{ $prop->{'children'} }) {
-            if( ! kill(0, $pid) ) {
+            if ( kill(0,$pid) && getpgrp($pid) != getpgrp($$) ) {
+                $colliding_pid = $pid;
+            }
+            elsif( ! kill(0, $pid) ) {
               $self->cleanup_dead_child_hook( $prop->{'children'}->{$pid} );
               $self->delete_child($pid);
             }
+        }
+        if ( $colliding_pid && $prop->{'log_level'} >= 4) {
+            require Data::Dumper;
+            $self->log(4,"colliding pid $colliding_pid detected, dumping tally");
+            $self->log(4,Data::Dumper::Dumper($tally));
         }
     }
 
@@ -438,7 +452,7 @@ sub coordinate_children {
     if ($time - $prop->{'last_process'} > 30 && $tally->{'waiting'} > $prop->{'min_spare_servers'}) {
         my $n1 = $tally->{'waiting'} - $prop->{'min_spare_servers'};
         my $n2 = $total - $prop->{'min_servers'};
-		$self->log(4,"($$) Check min spare servers n1: $n1 n2: $n2");
+        $self->log(4,"($$) Check min spare servers n1: $n1 n2: $n2");
         $self->kill_n_children( ($n2 > $n1) ? $n1 : $n2 );
     }
 
