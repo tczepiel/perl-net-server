@@ -222,7 +222,8 @@ sub run_child {
 
     while ($self->accept()) {
         $prop->{'connected'} = 1;
-        print $write "$$ processing\n";
+        print $write "$$ processing\n"
+		    or die "unable to write to parent: $!";
 
         my $ok = eval { $self->run_client_connection; 1 };
         if (! $ok) {
@@ -233,7 +234,8 @@ sub run_child {
         last if $self->done;
 
         $prop->{'connected'} = 0;
-        print $write "$$ waiting\n";
+        print $write "$$ waiting\n"
+		    or die "unable to write to parent: $!";
     }
 
     $self->child_finish_hook;
