@@ -325,7 +325,10 @@ sub run_parent {
             last if $self->parent_read_hook($line); # optional test by user hook
 
             # child should say "$pid status\n"
-            next if $line !~ /^(\d+)\ +(waiting|processing|dequeue|exiting)$/;
+            if ( $line !~ /^(\d+)\ +(waiting|processing|dequeue|exiting)$/ ) {
+                $self->log(4,"($$) WARN invalid line '$line' received from child process");
+                next;
+            }
             my ($pid, $status) = ($1, $2);
 
             $self->log(4,"($$) Child $pid reporting $status");
